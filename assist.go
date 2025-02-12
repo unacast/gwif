@@ -162,19 +162,6 @@ func AssistConfigForProvider(cfg *config) error {
 	}
 
 	if cfg.providerName == "" {
-		providers, err := ListProviders(cfg.projectID, cfg.poolName)
-		if err != nil {
-			return err
-		}
-		if len(providers) > 0 {
-			cfg.providerName, err = SelectFromList(providers, "providers")
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	if cfg.providerName == "" {
 		for {
 			cfg.providerName = GetInput("Enter new provider name (only letters, numbers, and hyphens allowed):")
 			if matched := strings.ContainsFunc(cfg.providerName, func(r rune) bool {
