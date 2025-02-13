@@ -51,21 +51,25 @@ func CreateProvider(cfg *config, projectNumber, githubRepositoryFullName string)
 		return nil
 	}
 
-	if !Ask("Create provider (" + cfg.providerName + ")?") {
-		return fmt.Errorf("cannot continue without a provider")
-	}
-
 	fmt.Printf(`
 |---------------------------------------------------------------------------------------|
 |                                 Provider Conditions                                   |
-|    You can apply conditions at the provider level so that you can later associate     |
-|                service accounts based on some other mapped attribute.                 |
-|                      e.g. apply repository condition to provider                      |
+|    You can apply conditions to further restrict the audience of the provider.         |
+|    you can later associate service accounts based on some other mapped attribute.     |
+|                      e.g. apply a branch condition to provider                        |
 |                                        then                                           |
-|                     associate service account by workflow or branch                   |
+|                        associate service account by workflow                          |
 |---------------------------------------------------------------------------------------|
 
 NOTE: Only one attribute can be used for service account assignment
+
+RECOMMENDATION: 
+- Be as specific as possible with conditions to improve security e.g. If your CI only runs on main,
+  then apply a branch condition to the provider.
+- Associate the service account with the workflow name. e.g. deploy -> github-deploy@...com
+- Create a service account for each workflow and assign minimum permissions to it to run the workflow.
+- Create a provider for each repository sharing the Google Cloud project.
+
 `)
 
 	audience := fmt.Sprintf("'https://iam.googleapis.com/projects/%s/locations/global/workloadIdentityPools/%s/providers/%s'",
@@ -95,21 +99,23 @@ NOTE: Only one attribute can be used for service account assignment
 		attributeCondition = fmt.Sprintf("%s && assertion.repository=='%s'", attributeCondition, githubRepositoryFullName)
 	}
 
-	if Ask("Apply workflow condition to the provider?") {
+	if Ask("[NOT RECOMMENDED] Apply workflow condition to the provider?") {
 		workflow := GetInput("Enter your workflow name:")
 		attributeCondition = fmt.Sprintf("%s && assertion.workflow=='%s'", attributeCondition, workflow)
 	}
 
-	if Ask("Apply environment condition to the provider?") {
+	if Ask("[PROBABLY NOT NEEDED] Apply environment condition to the provider?") {
 		env := GetInput("Enter your environment name:")
 		attributeCondition = fmt.Sprintf("%s && assertion.environment=='%s'", attributeCondition, env)
 	}
 
-	if Ask("Apply branch condition to the provider?") {
+	if Ask("[PROBABLY NOT NEEDED] Apply branch condition to the provider?") {
 		branch := GetInput("Enter your branch name:")
 		attributeCondition = fmt.Sprintf("%s && assertion.ref=='refs/heads/%s'", attributeCondition, branch)
-	} else {
-		fmt.Println("INFO: When associating service account by branch, use the format 'refs/heads/branch-name'")
+	}
+
+	if !Ask("Create provider (" + cfg.providerName + ")?") {
+		return fmt.Errorf("cannot continue without a provider")
 	}
 
 	cmd = exec.Command("gcloud", "iam", "workload-identity-pools", "providers", "create-oidc",

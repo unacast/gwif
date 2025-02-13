@@ -16,6 +16,7 @@ type config struct {
 	githubRepository      string
 	poolName              string
 	providerName          string
+	showDeleted           bool
 	unsafe                bool
 	serviceAccount        string
 }
@@ -27,6 +28,7 @@ func main() {
 		providerName: "github-provider",
 	}
 
+	// ========================= Root =========================
 	rootCmd := &cobra.Command{
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
@@ -49,25 +51,26 @@ Suggested Flow:
 6. Remove any service account keys from GitHub secrets
 
 Example:
-gwif create pool
-gwif create provider
-gwif auth
-gwif yaml
+gwif --project my-project pools create
+gwif --project my-project providers create
+gwif --project my-project auth
+gwif --project my-project yaml
 `,
 	}
 
-	// Create the create command
-	createCmd := &cobra.Command{
-		Use:   "create",
-		Short: "Create Workload Identity Federation resources",
+	rootCmd.PersistentFlags().StringVar(&cfg.projectID, "project", "", "Google Cloud project ID")
+
+	// ========================= Pools =========================
+	poolsCmd := &cobra.Command{
+		Use:   "pools",
+		Short: "Manage Workload Identity pools",
 	}
 
-	// Create pool subcommand
-	poolCmd := &cobra.Command{
-		Use:   "pool",
+	createPoolCmd := &cobra.Command{
+		Use:   "create",
 		Short: "Create a Workload Identity pool",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := AssistConfigForPool(cfg); err != nil {
+			if err := AssistConfigForPoolCreate(cfg); err != nil {
 				return err
 			}
 			if err := verifyActiveProject(cfg.projectID); err != nil {
@@ -77,12 +80,75 @@ gwif yaml
 		},
 	}
 
-	// Create provider subcommand
-	providerCmd := &cobra.Command{
-		Use:   "provider",
+	listPoolsCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Workload Identity pools",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := AssistConfigForRoot(cfg); err != nil {
+				return err
+			}
+
+			pools, err := ListPools(cfg.projectID, cfg.showDeleted)
+			if err != nil {
+				return err
+			}
+
+			if len(pools) == 0 {
+				if cfg.showDeleted {
+					fmt.Println("No deleted workload identity pools found in project")
+				} else {
+					fmt.Println("No workload identity pools found in project")
+				}
+				return nil
+			}
+
+			for _, pool := range pools {
+				if cfg.showDeleted {
+					fmt.Printf("%s (deleted)\n", pool)
+				} else {
+					fmt.Println(pool)
+				}
+			}
+
+			if cfg.showDeleted {
+				fmt.Println()
+				fmt.Println("Deleted pools are removed after a 30 day grace period.")
+			}
+			return nil
+		},
+	}
+
+	deletePoolCmd := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a Workload Identity pool",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := AssistConfigForPoolDelete(cfg); err != nil {
+				return err
+			}
+
+			return DeletePool(cfg)
+		},
+	}
+
+	poolsCmd.PersistentFlags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
+	listPoolsCmd.Flags().BoolVar(&cfg.showDeleted, "deleted", false, "Show deleted pools")
+
+	poolsCmd.AddCommand(createPoolCmd)
+	poolsCmd.AddCommand(listPoolsCmd)
+	poolsCmd.AddCommand(deletePoolCmd)
+	rootCmd.AddCommand(poolsCmd)
+
+	// ========================= Providers =========================
+	providersCmd := &cobra.Command{
+		Use:   "providers",
+		Short: "Manage Workload Identity providers",
+	}
+
+	createProviderCmd := &cobra.Command{
+		Use:   "create",
 		Short: "Create a Workload Identity provider",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := AssistConfigForProvider(cfg); err != nil {
+			if err := AssistConfigForProviderCreate(cfg); err != nil {
 				return err
 			}
 			if err := verifyActiveProject(cfg.projectID); err != nil {
@@ -99,7 +165,90 @@ gwif yaml
 		},
 	}
 
-	// Create auth subcommand
+	listProvidersCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List Workload Identity providers",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := AssistConfigForProviderSubcommand(cfg); err != nil {
+				return err
+			}
+			if err := verifyActiveProject(cfg.projectID); err != nil {
+				return err
+			}
+			providers, err := ListProviders(cfg.projectID, cfg.poolName, cfg.showDeleted)
+			if err != nil {
+				return err
+			}
+
+			if len(providers) == 0 {
+				if cfg.showDeleted {
+					fmt.Printf("No deleted workload identity providers found in pool %s\n", cfg.poolName)
+				} else {
+					fmt.Printf("No workload identity providers found in pool %s\n", cfg.poolName)
+				}
+				return nil
+			}
+
+			for _, provider := range providers {
+				if cfg.showDeleted {
+					fmt.Printf("%s (deleted)\n", provider)
+				} else {
+					fmt.Println(provider)
+				}
+			}
+			if cfg.showDeleted {
+				fmt.Println()
+				fmt.Println("Deleted providers are removed after a 30 day grace period.")
+			}
+			return nil
+		},
+	}
+
+	deleteProviderCmd := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a Workload Identity provider",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := AssistConfigForProviderDelete(cfg); err != nil {
+				return err
+			}
+			if err := verifyActiveProject(cfg.projectID); err != nil {
+				return err
+			}
+			return DeleteProvider(cfg)
+		},
+	}
+
+	restoreProviderCmd := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore a deleted Workload Identity provider",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := AssistConfigForProviderRestore(cfg); err != nil {
+				return err
+			}
+			if err := verifyActiveProject(cfg.projectID); err != nil {
+				return err
+			}
+			return RestoreProvider(cfg)
+		},
+	}
+	providersCmd.PersistentFlags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
+
+	createProviderCmd.Flags().BoolVar(&cfg.unsafe, "unsafe", false, "Allow unsafe configurations (allows repository name condition to not be enforced in the provider)")
+	createProviderCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
+	createProviderCmd.Flags().StringVar(&cfg.githubRepositoryOwner, "owner", "", "GitHub repository owner (case sensitive)")
+	createProviderCmd.Flags().StringVar(&cfg.githubRepository, "repo", "", "GitHub repository name (case sensitive)")
+
+	listProvidersCmd.Flags().BoolVar(&cfg.showDeleted, "deleted", false, "Show deleted providers")
+	deleteProviderCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
+	restoreProviderCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
+
+	providersCmd.AddCommand(createProviderCmd)
+	providersCmd.AddCommand(listProvidersCmd)
+	providersCmd.AddCommand(deleteProviderCmd)
+	providersCmd.AddCommand(restoreProviderCmd)
+	rootCmd.AddCommand(providersCmd)
+
+	// ========================= Auth =========================
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Configure service account authentication",
@@ -116,16 +265,28 @@ gwif yaml
 				return err
 			}
 
-			return AuthServiceAccount(cfg, projectNumber)
+			if err := AuthServiceAccount(cfg, projectNumber); err != nil {
+				return err
+			}
+
+			fmt.Println()
+			fmt.Println("YAML configuration:")
+			DumpYAML(cfg, projectNumber)
+			return nil
 		},
 	}
+	authCmd.Flags().StringVar(&cfg.serviceAccount, "service-account", "", "Service account email address")
+	authCmd.Flags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
+	authCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
 
-	// Create yaml subcommand
+	rootCmd.AddCommand(authCmd)
+
+	// ========================= YAML =========================
 	yamlCmd := &cobra.Command{
 		Use:   "yaml",
 		Short: "Generate GitHub Actions YAML configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := AssistConfigForAuth(cfg); err != nil {
+			if err := AssistConfigForYaml(cfg); err != nil {
 				return err
 			}
 
@@ -139,31 +300,9 @@ gwif yaml
 		},
 	}
 
-	// Add flags but make them optional
-	rootCmd.PersistentFlags().StringVar(&cfg.projectID, "project", "", "Google Cloud project ID")
-	poolCmd.Flags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
-
-	providerCmd.Flags().BoolVar(&cfg.unsafe, "unsafe", false, "Allow unsafe configurations (allows repository name condition to not be enforced in the provider)")
-	providerCmd.Flags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
-	providerCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
-	providerCmd.Flags().StringVar(&cfg.githubRepositoryOwner, "owner", "", "GitHub repository owner (case sensitive)")
-	providerCmd.Flags().StringVar(&cfg.githubRepository, "repo", "", "GitHub repository name (case sensitive)")
-
-	authCmd.Flags().StringVar(&cfg.serviceAccount, "service-account", "", "Service account email address")
-	authCmd.Flags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
-	authCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
-
 	yamlCmd.Flags().StringVar(&cfg.poolName, "pool", "", "Workload Identity pool name")
 	yamlCmd.Flags().StringVar(&cfg.providerName, "provider", "", "Workload Identity provider name")
 	yamlCmd.Flags().StringVar(&cfg.serviceAccount, "service-account", "", "Service account email address")
-
-	// Add create subcommands to create command
-	createCmd.AddCommand(poolCmd)
-	createCmd.AddCommand(providerCmd)
-
-	// Add commands to root command
-	rootCmd.AddCommand(createCmd)
-	rootCmd.AddCommand(authCmd)
 	rootCmd.AddCommand(yamlCmd)
 
 	if err := rootCmd.Execute(); err != nil {
