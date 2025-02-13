@@ -239,4 +239,6 @@ func AssistGithub(cfg *config) error {
 			break
 		}
 	}
+
+	return nil
 }
