@@ -174,7 +174,7 @@ func AssistConfigForProvider(cfg *config) error {
 		}
 	}
 
-	return nil
+	return AssistGithub(cfg)
 }
 
 // AssistConfigForAuth helps fill in all configuration needed for binding
@@ -190,6 +190,19 @@ func AssistConfigForAuth(cfg *config) error {
 		}
 	}
 
+	if cfg.poolName == "" {
+		pools, err := ListPools(cfg.projectID)
+		if err != nil {
+			return err
+		}
+		if len(pools) > 0 {
+			cfg.poolName, err = SelectFromList(pools, "workload identity pools")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	if cfg.serviceAccount == "" {
 		accounts, err := ListServiceAccounts(cfg.projectID)
 		if err != nil {
@@ -201,5 +214,29 @@ func AssistConfigForAuth(cfg *config) error {
 		}
 	}
 
-	return AssistConfigForProvider(cfg)
+	return nil
+}
+
+func AssistGithub(cfg *config) error {
+	if cfg.githubRepositoryOwner == "" {
+		for {
+			cfg.githubRepositoryOwner = GetInput("Enter GitHub repository owner [CASE SENSITIVE]:")
+			if cfg.githubRepositoryOwner == "" {
+				fmt.Println("GitHub repository owner is required.")
+				continue
+			}
+			break
+		}
+	}
+
+	if cfg.githubRepository == "" {
+		for {
+			cfg.githubRepository = GetInput("Enter GitHub repository name [CASE SENSITIVE]:")
+			if cfg.githubRepository == "" {
+				fmt.Println("GitHub repository name is required.")
+				continue
+			}
+			break
+		}
+	}
 }
