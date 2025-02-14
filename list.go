@@ -94,22 +94,22 @@ func SelectFromList(items []string, resourceType string) (string, error) {
 		fmt.Printf("%d) %s\n", i+1, item)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("\nEnter number (1-%d) to select %s: ", len(items), resourceType)
-		input, err := reader.ReadString('\n')
-		if err != nil {
+	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Printf("\nEnter number (1-%d) to select %s: ", len(items), resourceType)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
 			return "", fmt.Errorf("failed to read input: %v", err)
 		}
-
-		input = strings.TrimSpace(input)
-		var num int
-		_, err = fmt.Sscanf(input, "%d", &num)
-		if err != nil || num < 1 || num > len(items) {
-			fmt.Printf("Invalid input. Please enter a number between 1 and %d\n", len(items))
-			continue
-		}
-
-		return items[num-1], nil
+		return "", fmt.Errorf("no input provided")
 	}
+	input := scanner.Text()
+
+	var num int
+	_, err := fmt.Sscanf(input, "%d", &num)
+	if err != nil || num < 1 || num > len(items) {
+		fmt.Printf("Invalid input. Please enter a number between 1 and %d\n", len(items))
+		return SelectFromList(items, resourceType)
+	}
+
+	return items[num-1], nil
 }

@@ -38,7 +38,13 @@ func RequiredAsk(question, errorMessage string) bool {
 
 func GetInput(prompt string) string {
 	fmt.Print("\n", prompt, " ")
-	reader := bufio.NewReader(os.Stdin)
-	input, _ := reader.ReadString('\n')
-	return strings.TrimSpace(input)
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			fmt.Printf("Error reading input: %v\n", err)
+			return ""
+		}
+		return ""
+	}
+	return scanner.Text()
 }
